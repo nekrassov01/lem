@@ -1,0 +1,16 @@
+[stage]
+default = "master/.env"
+dev = "master/.env.development"
+
+[group.api]
+prefix = "API"
+dir = "./api"
+replace = ["REPLACEABLE1", "REPLACEABLE2"]
+check = true
+direnv = ["api", "ui"]
+
+[group.ui]
+prefix = "UI"
+dir = "./ui"
+replace = ["REPLACEABLE1"]
+direnv = ["ui"]

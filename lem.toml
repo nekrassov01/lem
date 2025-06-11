@@ -1,0 +1,19 @@
+[stage]
+default = "<central-env-dir>/.env"
+dev = "<central-env-dir>/.env.development"
+stg = "<central-env-dir>/.env.staging"
+prod = "<central-env-dir>/.env.production"
+
+[group.api]
+prefix = "API"
+dir = "./backend"
+replace = ["REPLACEABLE1"]
+check = true
+direnv = ["api"]
+
+[group.ui]
+prefix = "UI"
+dir = "./frontend"
+replace = ["REPLACEABLE2"]
+check = true
+direnv = ["ui"]
