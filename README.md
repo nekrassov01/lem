@@ -1,13 +1,22 @@
-# lem
-
-[![CI](https://github.com/nekrassov01/lem/actions/workflows/ci.yml/badge.svg)](https://github.com/nekrassov01/lem/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/nekrassov01/lem)](https://goreportcard.com/report/github.com/nekrassov01/lem)
-![GitHub](https://img.shields.io/github/license/nekrassov01/lem)
-![GitHub](https://img.shields.io/github/v/release/nekrassov01/lem)
+<p align="center">
+  <img alt="lem logo" src="./_assets/logo.png" height="300" />
+  <h3 align="center">The local env manager</h3>
+  <p align="center">The env splitting, delivery, replacement, and monitoring tool for monorepo</p>
+  <p align="center">
+    <a href="https://github.com/nekrassov01/lem/actions/workflows/ci.yml">
+      <img src="https://github.com/nekrassov01/lem/actions/workflows/ci.yml/badge.svg" alt="CI" />
+   </a>
+    <a href="https://goreportcard.com/report/github.com/nekrassov01/lem">
+      <img src="https://goreportcard.com/badge/github.com/nekrassov01/lem" alt="Go Report Card" />
+   </a>
+      <img src="https://img.shields.io/github/license/nekrassov01/lem" alt="LICENSE" />
+      <img src="https://img.shields.io/github/v/release/nekrassov01/lem" alt="LATEST" />
+  </p>
+</p>
 
 ## Overview
 
-LEM stands for Local Environments Manager. This tool is intended for configurations where, for example, back-end APIs, front-end UIs, infrastructure resource definitions, etc. are managed in a single repository, and provides utilities for managing .env files that should be in separate directory roots in one central .env based on configuration files. based on a configuration file.
+LEM stands for the local env manager, and this logo was insipired by [Lemmings](https://en.wikipedia.org/wiki/Lemmings_%28video_game%29). This tool is intended for configurations where, for example, back-end APIs, front-end UIs, infrastructure resource definitions, etc. are managed in a single repository, and provides utilities for managing .env files that should be in separate directory roots in one central .env based on configuration file.
 
 ## Features
 
