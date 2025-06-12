@@ -27,24 +27,24 @@ var cyan = color.New(color.FgHiCyan).SprintFunc()
 // how it is divided, and to which groups it is delivered.
 // It is read from a configuration file in TOML format.
 type Config struct {
-	Stage map[string]string `toml:"stage"`
-	Group map[string]Group  `toml:"group"`
+	Stage map[string]string `toml:"stage"` // Stage holds the path to the central environment file.
+	Group map[string]Group  `toml:"group"` // Group holds the configuration for each group of environment variables.
 
 	path string
 	size int
 	w    io.Writer
 }
 
-// Group represents a group of environment variables defined by several parameters.
+// Group groups environment variables using several parameters.
 type Group struct {
-	Prefix        string   `toml:"prefix"`
-	Dir           string   `toml:"dir"`
-	Replaceable   []string `toml:"replace"`
-	IsCheck       bool     `toml:"check"`
-	DirenvSupport []string `toml:"direnv"`
+	Prefix        string   `toml:"prefix"`  // Prefix for the environment variable names
+	Dir           string   `toml:"dir"`     // Directory to which the environment variables are delivered
+	Replaceable   []string `toml:"replace"` // List of prefixes to be replaced with the group prefix
+	IsCheck       bool     `toml:"check"`   // Whether to check for empty values
+	DirenvSupport []string `toml:"direnv"`  // Whether to create .envrc for direnv support
 }
 
-// Option is optional information given when loading the configuration file.
+// Option is an option given when loading the configuration file.
 type Option func(*Config)
 
 // WithSize sets the size to be allocated when reading the
@@ -70,6 +70,7 @@ func WithWriter(w io.Writer) Option {
 }
 
 // Init initializes the configuration file with an example.
+// You can use this to create a new configuration file.
 func Init() error {
 	if err := os.WriteFile(initConfigPath, initConfig, 0o644); err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
@@ -105,7 +106,7 @@ func (cfg *Config) Validate() error {
 	if err := cfg.validateGroup(); err != nil {
 		return err
 	}
-	fmt.Fprintln(cfg.w, "all checks passed!")
+	fmt.Fprintln(cfg.w, cyan("all checks passed!"))
 	return nil
 }
 
