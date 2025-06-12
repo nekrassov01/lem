@@ -11,6 +11,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestMain(m *testing.M) {
+	gitDir = dummyGitDir
+	defer func() {
+		gitDir = defaultGitDir
+	}()
+	m.Run()
+}
+
 func TestWithWriter(t *testing.T) {
 	type args struct {
 		w io.Writer
@@ -160,6 +168,10 @@ func TestLoad(t *testing.T) {
 						path, _ := filepath.Abs("testdata/sandbox")
 						return path
 					}(),
+					root: func() string {
+						path, _ := filepath.Abs("testdata/sandbox")
+						return path
+					}(),
 					size: 32,
 					w:    os.Stdout,
 				},
@@ -205,6 +217,10 @@ func TestLoad(t *testing.T) {
 						path, _ := filepath.Abs("testdata/sandbox")
 						return path
 					}(),
+					root: func() string {
+						path, _ := filepath.Abs("testdata/sandbox")
+						return path
+					}(),
 					size: 1,
 					w:    &bytes.Buffer{},
 				},
@@ -226,6 +242,10 @@ func TestLoad(t *testing.T) {
 						return path
 					}(),
 					dir: func() string {
+						path, _ := filepath.Abs("testdata/sandbox")
+						return path
+					}(),
+					root: func() string {
 						path, _ := filepath.Abs("testdata/sandbox")
 						return path
 					}(),
@@ -939,6 +959,7 @@ func Test_createEnvrc(t *testing.T) {
 		Group map[string]Group
 		path  string
 		dir   string
+		root  string
 		size  int
 		w     io.Writer
 	}
@@ -988,6 +1009,10 @@ func Test_createEnvrc(t *testing.T) {
 					path, _ := filepath.Abs("testdata/sandbox")
 					return path
 				}(),
+				root: func() string {
+					path, _ := filepath.Abs("testdata/sandbox")
+					return path
+				}(),
 			},
 			args: args{
 				group: Group{
@@ -1006,11 +1031,7 @@ func Test_createEnvrc(t *testing.T) {
 				}(),
 			},
 			expected: expected{
-				content: func() string {
-					a, _ := filepath.Abs("testdata/sandbox/api/.env")
-					b, _ := filepath.Abs("testdata/sandbox/ui/.env")
-					return fmt.Sprintf("watch_file %s\ndotenv_if_exists %s\nwatch_file %s\ndotenv_if_exists %s\n", a, a, b, b)
-				}(),
+				content: "watch_file ./.env\ndotenv_if_exists ./.env\nwatch_file ../ui/.env\ndotenv_if_exists ../ui/.env\n",
 				isError: false,
 			},
 		},
@@ -1042,7 +1063,8 @@ func Test_createEnvrc(t *testing.T) {
 						DirenvSupport: []string{"ui"},
 					},
 				},
-				dir: "testdata/sandbox",
+				dir:  "testdata/sandbox",
+				root: "testdata/sandbox",
 			},
 			args: args{
 				group: Group{
@@ -1066,7 +1088,7 @@ func Test_createEnvrc(t *testing.T) {
 			},
 		},
 		{
-			name: "basic",
+			name: "directory but file",
 			fields: fields{
 				Stage: map[string]string{
 					"default": "dummy",
@@ -1127,6 +1149,7 @@ func Test_createEnvrc(t *testing.T) {
 				Group: tt.fields.Group,
 				path:  tt.fields.path,
 				dir:   tt.fields.dir,
+				root:  tt.fields.root,
 				size:  tt.fields.size,
 				w:     tt.fields.w,
 			}
@@ -1141,6 +1164,69 @@ func Test_createEnvrc(t *testing.T) {
 				t.Fatalf("failed to read written file: %v", err)
 			}
 			assert.Equal(t, string(content), tt.expected.content)
+		})
+	}
+}
+
+func Test_projectRoot(t *testing.T) {
+	type args struct {
+		dir string
+	}
+	type expected struct {
+		dir string
+	}
+	tests := []struct {
+		name     string
+		args     args
+		gitDir   string
+		expected expected
+	}{
+		{
+			name: "basic",
+			args: args{
+				dir: "testdata/sandbox",
+			},
+			expected: expected{
+				dir: "testdata/sandbox",
+			},
+		},
+		{
+			name: "child",
+			args: args{
+				dir: "testdata/sandbox/api",
+			},
+			expected: expected{
+				dir: "testdata/sandbox",
+			},
+		},
+		{
+			name: "nested",
+			args: args{
+				dir: "testdata/sandbox/api/subdir",
+			},
+			expected: expected{
+				dir: "testdata/sandbox",
+			},
+		},
+		{
+			name: ".git not found",
+			args: args{
+				dir: "testdata/sandbox",
+			},
+			gitDir: ".notfound",
+			expected: expected{
+				dir: "testdata/sandbox",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.gitDir != "" {
+				gitDir = tt.gitDir
+			}
+			actual := projectRoot(tt.args.dir)
+			assert.Equal(t, tt.expected.dir, actual)
+			gitDir = dummyGitDir
 		})
 	}
 }

@@ -15,13 +15,31 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-const initConfigPath = "lem.toml"
+const (
+	// initConfigPath is the default path to the configuration file.
+	initConfigPath = "lem.toml"
 
-//go:embed lem.toml
-var initConfig []byte
+	// defaultGitDir is the default directory name for the git repository.
+	defaultGitDir = ".git"
 
-var gray = color.New(color.FgHiBlack).SprintFunc()
-var cyan = color.New(color.FgHiCyan).SprintFunc()
+	// dummyGitDir is a dummy directory name used for testing purposes.
+	dummyGitDir = ".git.dummy"
+)
+
+var (
+	//go:embed lem.toml
+	initConfig []byte
+
+	// gitDir is the directory name for the git repository.
+	// It is replaceable for testing purposes.
+	gitDir = defaultGitDir
+
+	// gray is a function that returns a gray color for printing messages.
+	gray = color.New(color.FgHiBlack).SprintFunc()
+
+	// cyan is a function that returns a cyan color for printing messages.
+	cyan = color.New(color.FgHiCyan).SprintFunc()
+)
 
 // Config holds settings such as where the central env is located,
 // how it is divided, and to which groups it is delivered.
@@ -30,10 +48,11 @@ type Config struct {
 	Stage map[string]string `toml:"stage"` // Stage holds the path to the central environment file.
 	Group map[string]Group  `toml:"group"` // Group holds the configuration for each group of environment variables.
 
-	path string
-	dir  string
-	size int
-	w    io.Writer
+	path string    // path is the absolute path to the configuration file
+	dir  string    // dir is the configuration file directory
+	root string    // root is the project root directory with .git
+	size int       // size is the size of the map to be allocated when reading the central env
+	w    io.Writer // w is the writer to which the output is written
 }
 
 // Group groups environment variables using several parameters.
@@ -95,6 +114,7 @@ func Load(path string, opts ...Option) (*Config, error) {
 	}
 	cfg.path = absPath
 	cfg.dir = filepath.Dir(absPath)
+	cfg.root = projectRoot(cfg.dir)
 	cfg.size = 32
 	cfg.w = os.Stdout
 	for _, opt := range opts {
@@ -154,7 +174,7 @@ func (cfg *Config) Run(stage string) (string, error) {
 
 		// Gathers entries from the central env that forward match the group prefix.
 		// Also, replacement targets set in the group are added after replacing them with the group prefix.
-		o := cfg.makeEnv(group, e)
+		o := makeEnv(group, e, cfg.size)
 
 		// Check for empty values if IsCheck is set
 		if group.IsCheck {
@@ -165,10 +185,11 @@ func (cfg *Config) Run(stage string) (string, error) {
 			}
 		}
 
+		// Create .envrc file if specified
 		if len(group.DirenvSupport) != 0 {
 			_, err = cfg.createEnvrc(group, dir)
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("failed to create .envrc for group.%s: %w", id, err)
 			}
 		}
 
@@ -275,7 +296,7 @@ func (cfg *Config) validateStagePair(stage string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("failed to validate stage: %s: not set in %s", stage, cfg.path)
 	}
-	absPath, isDir, err := resolveEnvPath(cfg.dir, path)
+	absPath, isDir, err := cfg.resolvePath(path)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve stage path: %s: %w", stage, err)
 	}
@@ -311,7 +332,7 @@ func (cfg *Config) validateGroupPair(id string, group Group) (string, error) {
 	if group.Dir == "" {
 		return "", fmt.Errorf("failed to validate group.%s: dir not set in %s", id, cfg.path)
 	}
-	absPath, isDir, err := resolveEnvPath(cfg.dir, group.Dir)
+	absPath, isDir, err := cfg.resolvePath(group.Dir)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve group.%s: %w", id, err)
 	}
@@ -336,27 +357,68 @@ func (cfg *Config) createEnvrc(group Group, dir string) (string, error) {
 	dest := filepath.Join(dir, ".envrc")
 	b := strings.Builder{}
 	b.Grow(2048)
-	for _, id := range group.DirenvSupport {
-		g := cfg.Group[id]
-		envDir, isDir, err := resolveEnvPath(cfg.dir, g.Dir)
+	for _, target := range group.DirenvSupport {
+		g := cfg.Group[target]
+		envDir, isDir, err := cfg.resolvePath(g.Dir)
 		if err != nil {
-			return "", fmt.Errorf("direnv-support: %w", err)
+			return "", fmt.Errorf("%s: %w", target, err)
 		}
 		if !isDir {
-			return "", fmt.Errorf("direnv-support: failed to resolve group.%s: is not a directory", id)
+			return "", fmt.Errorf("%s: is not a directory", target)
 		}
-		envPath := filepath.Join(envDir, ".env")
-		b.WriteString(fmt.Sprintf("watch_file %s\n", envPath))
-		b.WriteString(fmt.Sprintf("dotenv_if_exists %s\n", envPath))
+		relPath, err := filepath.Rel(dir, envDir)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", target, err)
+		}
+		b.WriteString(fmt.Sprintf("watch_file %s/.env\n", relPath))
+		b.WriteString(fmt.Sprintf("dotenv_if_exists %s/.env\n", relPath))
 	}
-	if err := os.WriteFile(dest, []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(dest, []byte(b.String()), 0644); err != nil {
 		return "", fmt.Errorf("failed to write .envrc file: %w", err)
 	}
 	return dest, nil
 }
 
-func (cfg *Config) makeEnv(group Group, base map[string]string) map[string]string {
-	e := make(map[string]string, cfg.size)
+func (cfg *Config) resolvePath(path string) (string, bool, error) {
+	var absPath string
+	if filepath.IsAbs(path) {
+		absPath = filepath.Clean(path)
+	} else {
+		absPath = filepath.Clean(filepath.Join(cfg.dir, path))
+	}
+	relPath, err := filepath.Rel(cfg.root, absPath)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to resolve path: %w", err)
+	}
+	if strings.HasPrefix(relPath, "..") {
+		return "", false, fmt.Errorf("failed to resolve path: outside of the project root: %s", absPath)
+	}
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to stat resolved path: %w", err)
+	}
+	return absPath, info.IsDir(), nil
+}
+
+func projectRoot(baseDir string) string {
+	current := filepath.Clean(baseDir)
+	for {
+		root := filepath.Join(current, gitDir)
+		info, err := os.Stat(root)
+		if err == nil && info.IsDir() {
+			return current
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return baseDir
+}
+
+func makeEnv(group Group, base map[string]string, size int) map[string]string {
+	e := make(map[string]string, size)
 	for k, v := range base {
 		if strings.HasPrefix(k, group.Prefix+"_") {
 			e[k] = v
@@ -421,27 +483,6 @@ func writeEnv(path string, env map[string]string) error {
 		return fmt.Errorf("failed to flush env file: %w", err)
 	}
 	return nil
-}
-
-func resolveEnvPath(parent, path string) (string, bool, error) {
-	// Provide directory traversal protection
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(parent, path)
-	}
-	parent = filepath.Clean(parent)
-	path = filepath.Clean(path)
-	relPath, err := filepath.Rel(parent, path)
-	if err != nil {
-		return "", false, fmt.Errorf("failed to resolve path: %w", err)
-	}
-	if strings.HasPrefix(relPath, "..") {
-		return "", false, fmt.Errorf("failed to resolve path: outside of the configuration directory: %s", path)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", false, fmt.Errorf("failed to stat resolved path: %w", err)
-	}
-	return path, info.IsDir(), nil
 }
 
 func sanitizeConfigPath(path string) (string, bool, error) {
