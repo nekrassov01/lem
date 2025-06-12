@@ -31,6 +31,7 @@ type Config struct {
 	Group map[string]Group  `toml:"group"` // Group holds the configuration for each group of environment variables.
 
 	path string
+	dir  string
 	size int
 	w    io.Writer
 }
@@ -81,14 +82,19 @@ func Init() error {
 
 // Load loads and instantiates the specified configuration file path.
 func Load(path string, opts ...Option) (*Config, error) {
-	if _, err := checkPath(path); err != nil {
+	absPath, idDir, err := sanitizeConfigPath(path)
+	if err != nil {
 		return nil, err
 	}
+	if idDir {
+		return nil, fmt.Errorf("failed to load config: %s: is a directory", path)
+	}
 	cfg := &Config{}
-	if _, err := toml.DecodeFile(path, cfg); err != nil {
+	if _, err := toml.DecodeFile(absPath, cfg); err != nil {
 		return nil, fmt.Errorf("failed to decode config file: %w", err)
 	}
-	cfg.path = path
+	cfg.path = absPath
+	cfg.dir = filepath.Dir(absPath)
 	cfg.size = 32
 	cfg.w = os.Stdout
 	for _, opt := range opts {
@@ -259,7 +265,7 @@ func (cfg *Config) validateStage() error {
 
 func (cfg *Config) validateStageTable() error {
 	if len(cfg.Stage) == 0 {
-		return fmt.Errorf("faild to validate: stage not set in %s", cfg.path)
+		return fmt.Errorf("failed to validate: stage not set in %s", cfg.path)
 	}
 	return nil
 }
@@ -267,16 +273,16 @@ func (cfg *Config) validateStageTable() error {
 func (cfg *Config) validateStagePair(stage string) (string, error) {
 	path, ok := cfg.Stage[stage]
 	if !ok {
-		return "", fmt.Errorf("faild to validate: stage %s not set in %s", stage, cfg.path)
+		return "", fmt.Errorf("failed to validate stage: %s: not set in %s", stage, cfg.path)
 	}
-	isDir, err := checkPath(path)
+	absPath, isDir, err := resolveEnvPath(cfg.dir, path)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to resolve stage path: %s: %w", stage, err)
 	}
 	if isDir {
-		return "", fmt.Errorf("faild to validate: stage %s: is a directory", stage)
+		return "", fmt.Errorf("failed to resolve stage path: %s: is a directory", stage)
 	}
-	return path, nil
+	return absPath, nil
 }
 
 func (cfg *Config) validateGroup() error {
@@ -293,57 +299,57 @@ func (cfg *Config) validateGroup() error {
 
 func (cfg *Config) validateGroupTable() error {
 	if len(cfg.Group) == 0 {
-		return fmt.Errorf("faild to validate: group not set in %s", cfg.path)
+		return fmt.Errorf("failed to validate: group not set in %s", cfg.path)
 	}
 	return nil
 }
 
 func (cfg *Config) validateGroupPair(id string, group Group) (string, error) {
 	if group.Prefix == "" {
-		return "", fmt.Errorf("faild to validate: prefix not set at group.%s in %s", id, cfg.path)
+		return "", fmt.Errorf("failed to validate group.%s: prefix not set in %s", id, cfg.path)
 	}
 	if group.Dir == "" {
-		return "", fmt.Errorf("faild to validate: dir not set at group.%s in %s", id, cfg.path)
+		return "", fmt.Errorf("failed to validate group.%s: dir not set in %s", id, cfg.path)
 	}
-	isDir, err := checkPath(group.Dir)
+	absPath, isDir, err := resolveEnvPath(cfg.dir, group.Dir)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to resolve group.%s: %w", id, err)
 	}
 	if !isDir {
-		return "", fmt.Errorf("faild to validate: group.%s: is not a directory", id)
+		return "", fmt.Errorf("failed to resolve group.%s: is not a directory", id)
 	}
 	if slices.Contains(group.Replaceable, "") {
-		return "", fmt.Errorf("faild to validate: group.%s: `replace` contains empty", id)
+		return "", fmt.Errorf("failed to validate: group.%s: `replace` contains empty", id)
 	}
 	if slices.Contains(group.DirenvSupport, "") {
-		return "", fmt.Errorf("faild to validate: group.%s: `direnv` contains empty", id)
+		return "", fmt.Errorf("failed to validate: group.%s: `direnv` contains empty", id)
 	}
 	for _, s := range group.DirenvSupport {
 		if _, ok := cfg.Group[s]; !ok {
-			return "", fmt.Errorf("faild to validate: group.%s: invalid id: %s", id, s)
+			return "", fmt.Errorf("failed to validate: group.%s: invalid id: %s", id, s)
 		}
 	}
-	return group.Dir, nil
+	return absPath, nil
 }
 
 func (cfg *Config) createEnvrc(group Group, dir string) (string, error) {
 	dest := filepath.Join(dir, ".envrc")
-	if _, err := os.Stat(dest); err == nil {
-		return dest, nil
-	}
 	b := strings.Builder{}
 	b.Grow(2048)
 	for _, id := range group.DirenvSupport {
 		g := cfg.Group[id]
-		envDir, err := filepath.Abs(g.Dir)
+		envDir, isDir, err := resolveEnvPath(cfg.dir, g.Dir)
 		if err != nil {
-			return "", fmt.Errorf("failed to get abs path for direnv support: %w", err)
+			return "", fmt.Errorf("direnv-support: %w", err)
+		}
+		if !isDir {
+			return "", fmt.Errorf("direnv-support: failed to resolve group.%s: is not a directory", id)
 		}
 		envPath := filepath.Join(envDir, ".env")
 		b.WriteString(fmt.Sprintf("watch_file %s\n", envPath))
-		b.WriteString(fmt.Sprintf("dotenv %s\n", envPath))
+		b.WriteString(fmt.Sprintf("dotenv_if_exists %s\n", envPath))
 	}
-	if err := os.WriteFile(dest, []byte(b.String()), 0o755); err != nil {
+	if err := os.WriteFile(dest, []byte(b.String()), 0o644); err != nil {
 		return "", fmt.Errorf("failed to write .envrc file: %w", err)
 	}
 	return dest, nil
@@ -417,13 +423,35 @@ func writeEnv(path string, env map[string]string) error {
 	return nil
 }
 
-func checkPath(path string) (bool, error) {
-	if strings.HasPrefix(path, "..") {
-		return false, fmt.Errorf("env file must be in or under the current directory: %s", path)
+func resolveEnvPath(parent, path string) (string, bool, error) {
+	// Provide directory traversal protection
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(parent, path)
+	}
+	parent = filepath.Clean(parent)
+	path = filepath.Clean(path)
+	relPath, err := filepath.Rel(parent, path)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to resolve path: %w", err)
+	}
+	if strings.HasPrefix(relPath, "..") {
+		return "", false, fmt.Errorf("failed to resolve path: outside of the configuration directory: %s", path)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return false, fmt.Errorf("failed to stat env file: %w", err)
+		return "", false, fmt.Errorf("failed to stat resolved path: %w", err)
 	}
-	return info.IsDir(), nil
+	return path, info.IsDir(), nil
+}
+
+func sanitizeConfigPath(path string) (string, bool, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to get abs path: %w", err)
+	}
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to stat configuration file: %w", err)
+	}
+	return absPath, info.IsDir(), nil
 }

@@ -152,7 +152,14 @@ func TestLoad(t *testing.T) {
 							DirenvSupport: []string{"ui"},
 						},
 					},
-					path: "testdata/sandbox/lem.toml",
+					path: func() string {
+						path, _ := filepath.Abs("testdata/sandbox/lem.toml")
+						return path
+					}(),
+					dir: func() string {
+						path, _ := filepath.Abs("testdata/sandbox")
+						return path
+					}(),
 					size: 32,
 					w:    os.Stdout,
 				},
@@ -190,7 +197,14 @@ func TestLoad(t *testing.T) {
 							DirenvSupport: []string{"ui"},
 						},
 					},
-					path: "testdata/sandbox/lem.toml",
+					path: func() string {
+						path, _ := filepath.Abs("testdata/sandbox/lem.toml")
+						return path
+					}(),
+					dir: func() string {
+						path, _ := filepath.Abs("testdata/sandbox")
+						return path
+					}(),
 					size: 1,
 					w:    &bytes.Buffer{},
 				},
@@ -207,9 +221,16 @@ func TestLoad(t *testing.T) {
 				cfg: &Config{
 					Stage: nil,
 					Group: nil,
-					path:  "testdata/sandbox/lem.empty.toml",
-					size:  32,
-					w:     os.Stdout,
+					path: func() string {
+						path, _ := filepath.Abs("testdata/sandbox/lem.empty.toml")
+						return path
+					}(),
+					dir: func() string {
+						path, _ := filepath.Abs("testdata/sandbox")
+						return path
+					}(),
+					size: 32,
+					w:    os.Stdout,
 				},
 				isError: false,
 			},
@@ -917,6 +938,7 @@ func Test_createEnvrc(t *testing.T) {
 		Stage map[string]string
 		Group map[string]Group
 		path  string
+		dir   string
 		size  int
 		w     io.Writer
 	}
@@ -938,42 +960,163 @@ func Test_createEnvrc(t *testing.T) {
 			name: "basic",
 			fields: fields{
 				Stage: map[string]string{
-					"default": "testdata/sandbox/master/.env",
+					"default": "dummy",
 				},
 				Group: map[string]Group{
 					"api": {
-						Prefix:        "API",
-						Dir:           "testdata/sandbox/api",
+						Prefix: "API",
+						Dir: func() string {
+							path, _ := filepath.Abs("testdata/sandbox/api")
+							return path
+						}(),
 						Replaceable:   []string{"REPLACEABLE1", "REPLACEABLE2"},
 						IsCheck:       true,
 						DirenvSupport: []string{"api", "ui"},
 					},
 					"ui": {
-						Prefix:        "UI",
-						Dir:           "testdata/sandbox/ui",
+						Prefix: "UI",
+						Dir: func() string {
+							path, _ := filepath.Abs("testdata/sandbox/ui")
+							return path
+						}(),
 						Replaceable:   []string{"REPLACEABLE1"},
 						IsCheck:       false,
 						DirenvSupport: []string{"ui"},
 					},
 				},
+				dir: func() string {
+					path, _ := filepath.Abs("testdata/sandbox")
+					return path
+				}(),
 			},
 			args: args{
 				group: Group{
-					Prefix:        "API",
-					Dir:           "testdata/sandbox/api",
+					Prefix: "API",
+					Dir: func() string {
+						path, _ := filepath.Abs("testdata/sandbox/api")
+						return path
+					}(),
 					Replaceable:   []string{"REPLACEABLE1", "REPLACEABLE2"},
 					IsCheck:       true,
 					DirenvSupport: []string{"api", "ui"},
 				},
-				dir: t.TempDir(),
+				dir: func() string {
+					path, _ := filepath.Abs("testdata/sandbox/api")
+					return path
+				}(),
 			},
 			expected: expected{
 				content: func() string {
 					a, _ := filepath.Abs("testdata/sandbox/api/.env")
 					b, _ := filepath.Abs("testdata/sandbox/ui/.env")
-					return fmt.Sprintf("watch_file %s\ndotenv %s\nwatch_file %s\ndotenv %s\n", a, a, b, b)
+					return fmt.Sprintf("watch_file %s\ndotenv_if_exists %s\nwatch_file %s\ndotenv_if_exists %s\n", a, a, b, b)
 				}(),
 				isError: false,
+			},
+		},
+		{
+			name: "resolve error",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "dummy",
+				},
+				Group: map[string]Group{
+					"api": {
+						Prefix: "API",
+						Dir: func() string {
+							path, _ := filepath.Abs("testdata/sandbox/api")
+							return path
+						}(),
+						Replaceable:   []string{"REPLACEABLE1", "REPLACEABLE2"},
+						IsCheck:       true,
+						DirenvSupport: []string{"api", "ui"},
+					},
+					"ui": {
+						Prefix: "UI",
+						Dir: func() string {
+							path, _ := filepath.Abs("testdata/sandbox/ui")
+							return path
+						}(),
+						Replaceable:   []string{"REPLACEABLE1"},
+						IsCheck:       false,
+						DirenvSupport: []string{"ui"},
+					},
+				},
+				dir: "testdata/sandbox",
+			},
+			args: args{
+				group: Group{
+					Prefix: "API",
+					Dir: func() string {
+						path, _ := filepath.Abs("testdata/sandbox/api")
+						return path
+					}(),
+					Replaceable:   []string{"REPLACEABLE1", "REPLACEABLE2"},
+					IsCheck:       true,
+					DirenvSupport: []string{"api", "ui"},
+				},
+				dir: func() string {
+					path, _ := filepath.Abs("testdata/sandbox/api")
+					return path
+				}(),
+			},
+			expected: expected{
+				content: "",
+				isError: true,
+			},
+		},
+		{
+			name: "basic",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "dummy",
+				},
+				Group: map[string]Group{
+					"api": {
+						Prefix: "API",
+						Dir: func() string {
+							path, _ := filepath.Abs("testdata/sandbox/api/.env")
+							return path
+						}(),
+						Replaceable:   []string{"REPLACEABLE1", "REPLACEABLE2"},
+						IsCheck:       true,
+						DirenvSupport: []string{"api", "ui"},
+					},
+					"ui": {
+						Prefix: "UI",
+						Dir: func() string {
+							path, _ := filepath.Abs("testdata/sandbox/ui")
+							return path
+						}(),
+						Replaceable:   []string{"REPLACEABLE1"},
+						IsCheck:       false,
+						DirenvSupport: []string{"ui"},
+					},
+				},
+				dir: func() string {
+					path, _ := filepath.Abs("testdata/sandbox")
+					return path
+				}(),
+			},
+			args: args{
+				group: Group{
+					Prefix: "API",
+					Dir: func() string {
+						path, _ := filepath.Abs("testdata/sandbox/api/.env")
+						return path
+					}(),
+					Replaceable:   []string{"REPLACEABLE1", "REPLACEABLE2"},
+					IsCheck:       true,
+					DirenvSupport: []string{"api", "ui"},
+				},
+				dir: func() string {
+					path, _ := filepath.Abs("testdata/sandbox/api")
+					return path
+				}(),
+			},
+			expected: expected{
+				content: "",
+				isError: true,
 			},
 		},
 	}
@@ -983,6 +1126,7 @@ func Test_createEnvrc(t *testing.T) {
 				Stage: tt.fields.Stage,
 				Group: tt.fields.Group,
 				path:  tt.fields.path,
+				dir:   tt.fields.dir,
 				size:  tt.fields.size,
 				w:     tt.fields.w,
 			}
@@ -996,7 +1140,7 @@ func Test_createEnvrc(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to read written file: %v", err)
 			}
-			assert.Contains(t, string(content), tt.expected.content)
+			assert.Equal(t, string(content), tt.expected.content)
 		})
 	}
 }

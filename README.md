@@ -155,6 +155,9 @@ check = true
 direnv = ["ui"]
 ```
 
+>[!NOTE]
+>The path must be either relative to the configuration file location or absolute.
+
 | Table        | Key        | Value           | Description                                                                                                         |
 | ------------ | ---------- | --------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `stage`      | `<string>` | string          | The pairs of stage name and .env file path. If not specified, `default` is used.                                    |
