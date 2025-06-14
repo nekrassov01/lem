@@ -101,12 +101,12 @@ func Init() error {
 
 // Load loads and instantiates the specified configuration file path.
 func Load(path string, opts ...Option) (*Config, error) {
-	absPath, idDir, err := sanitizeConfigPath(path)
+	absPath, isDir, err := sanitizePath(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to validate config path: %w", err)
 	}
-	if idDir {
-		return nil, fmt.Errorf("failed to load config: %s: is a directory", path)
+	if isDir {
+		return nil, fmt.Errorf("failed to validate config path: %s: is a directory", path)
 	}
 	cfg := &Config{}
 	if _, err := toml.DecodeFile(absPath, cfg); err != nil {
@@ -126,11 +126,21 @@ func Load(path string, opts ...Option) (*Config, error) {
 // Validate verifies that the configuration file is executable.
 // In addition to syntax checks, it also checks whether the path exists.
 func (cfg *Config) Validate() error {
-	if err := cfg.validateStage(); err != nil {
+	if err := cfg.validateStageTable(); err != nil {
 		return err
 	}
-	if err := cfg.validateGroup(); err != nil {
+	if err := cfg.validateGroupTable(); err != nil {
 		return err
+	}
+	for stage := range cfg.Stage {
+		if _, err := cfg.validateStagePair(stage); err != nil {
+			return err
+		}
+	}
+	for id, group := range cfg.Group {
+		if _, err := cfg.validateGroupPair(id, group); err != nil {
+			return err
+		}
 	}
 	fmt.Fprintln(cfg.w, cyan("all checks passed!"))
 	return nil
@@ -144,6 +154,7 @@ func (cfg *Config) Run(stage string) (string, error) {
 	if err := cfg.validateStageTable(); err != nil {
 		return "", err
 	}
+
 	// Validate the specified stage exists
 	path, err := cfg.validateStagePair(stage)
 	if err != nil {
@@ -231,7 +242,7 @@ func (cfg *Config) Watch(stage string) (string, error) {
 	// Add the directory of the stage file to the watcher
 	dir := filepath.Dir(stagePath)
 	if err := watcher.Add(dir); err != nil {
-		return "", fmt.Errorf("failed to add dir %s to watcher: %w", dir, err)
+		return "", fmt.Errorf("failed to add dir to watcher: %w", err)
 	}
 
 	// Watch for changes in the stage file
@@ -267,26 +278,14 @@ func (cfg *Config) Watch(stage string) (string, error) {
 	}()
 
 	if err := <-done; err != nil {
-		return stagePath, err
+		return "", err
 	}
 	return stagePath, nil
 }
 
-func (cfg *Config) validateStage() error {
-	if err := cfg.validateStageTable(); err != nil {
-		return err
-	}
-	for stage := range cfg.Stage {
-		if _, err := cfg.validateStagePair(stage); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (cfg *Config) validateStageTable() error {
 	if len(cfg.Stage) == 0 {
-		return fmt.Errorf("failed to validate: stage not set in %s", cfg.path)
+		return fmt.Errorf("failed to validate stage: stage not set in %s", cfg.path)
 	}
 	return nil
 }
@@ -298,29 +297,17 @@ func (cfg *Config) validateStagePair(stage string) (string, error) {
 	}
 	absPath, isDir, err := cfg.resolvePath(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve stage path: %s: %w", stage, err)
+		return "", fmt.Errorf("failed to validate stage path: %s: %w", stage, err)
 	}
 	if isDir {
-		return "", fmt.Errorf("failed to resolve stage path: %s: is a directory", stage)
+		return "", fmt.Errorf("failed to validate stage path: %s: is a directory", stage)
 	}
 	return absPath, nil
 }
 
-func (cfg *Config) validateGroup() error {
-	if err := cfg.validateGroupTable(); err != nil {
-		return err
-	}
-	for id, group := range cfg.Group {
-		if _, err := cfg.validateGroupPair(id, group); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (cfg *Config) validateGroupTable() error {
 	if len(cfg.Group) == 0 {
-		return fmt.Errorf("failed to validate: group not set in %s", cfg.path)
+		return fmt.Errorf("failed to validate group: group not set in %s", cfg.path)
 	}
 	return nil
 }
@@ -334,10 +321,10 @@ func (cfg *Config) validateGroupPair(id string, group Group) (string, error) {
 	}
 	absPath, isDir, err := cfg.resolvePath(group.Dir)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve group.%s: %w", id, err)
+		return "", fmt.Errorf("failed to validate group.%s: %w", id, err)
 	}
 	if !isDir {
-		return "", fmt.Errorf("failed to resolve group.%s: is not a directory", id)
+		return "", fmt.Errorf("failed to validate group.%s: is not a directory", id)
 	}
 	if slices.Contains(group.Replaceable, "") {
 		return "", fmt.Errorf("failed to validate: group.%s: `replace` contains empty", id)
@@ -460,7 +447,7 @@ func readEnv(path string, size int) (map[string]string, error) {
 func writeEnv(path string, env map[string]string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("failed to create dir: %w", err)
+		return fmt.Errorf("failed to create env dir: %w", err)
 	}
 
 	f, err := os.Create(path)
@@ -485,14 +472,14 @@ func writeEnv(path string, env map[string]string) error {
 	return nil
 }
 
-func sanitizeConfigPath(path string) (string, bool, error) {
+func sanitizePath(path string) (string, bool, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return "", false, fmt.Errorf("failed to get abs path: %w", err)
 	}
 	info, err := os.Stat(absPath)
 	if err != nil {
-		return "", false, fmt.Errorf("failed to stat configuration file: %w", err)
+		return "", false, fmt.Errorf("failed to stat sanitized path: %w", err)
 	}
 	return absPath, info.IsDir(), nil
 }

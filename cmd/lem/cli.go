@@ -86,11 +86,11 @@ func (a *app) before(ctx context.Context, cmd *cli.Command) (context.Context, er
 	return ctx, nil
 }
 
-func (a *app) init(_ context.Context, _ *cli.Command) error {
+func (*app) init(context.Context, *cli.Command) error {
 	return lem.Init()
 }
 
-func (a *app) validate(_ context.Context, _ *cli.Command) error {
+func (a *app) validate(context.Context, *cli.Command) error {
 	cfg := a.Metadata["config"].(*lem.Config)
 	return cfg.Validate()
 }
