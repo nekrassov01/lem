@@ -67,7 +67,7 @@ USAGE:
    lem init [command [command options]]
 
 DESCRIPTION:
-   Init generates a lem.example.toml in the current directory.
+   Init generates a sample lem.toml in the current directory.
    You can customize this file for your use.
 
 OPTIONS:

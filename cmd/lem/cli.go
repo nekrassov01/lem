@@ -44,7 +44,7 @@ func newApp(w, ew io.Writer) *app {
 			{
 				Name:        "init",
 				Usage:       "Initialize the configuration file to current directory",
-				Description: "Init generates a lem.example.toml in the current directory.\nYou can customize this file for your use.",
+				Description: "Init generates a sample lem.toml in the current directory.\nYou can customize this file for your use.",
 				Action:      a.init,
 			},
 			{
