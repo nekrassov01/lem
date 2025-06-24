@@ -3,6 +3,7 @@ package lem
 import (
 	"bufio"
 	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -92,7 +93,7 @@ func WithWriter(w io.Writer) Option {
 // Init initializes the configuration file with an example.
 // You can use this to create a new configuration file.
 func Init() error {
-	if err := os.WriteFile(initConfigPath, initConfig, 0o644); err != nil {
+	if err := os.WriteFile(initConfigPath, initConfig, 0o600); err != nil {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
 	fmt.Printf("%s %s\n", cyan("created:"), initConfigPath)
@@ -142,7 +143,7 @@ func (cfg *Config) Validate() error {
 			return err
 		}
 	}
-	fmt.Fprintln(cfg.w, cyan("all checks passed!"))
+	_, _ = fmt.Fprintln(cfg.w, cyan("all checks passed!"))
 	return nil
 }
 
@@ -174,7 +175,7 @@ func (cfg *Config) Run(stage string) (string, error) {
 
 	msgs := make([]string, len(cfg.Group))
 	i := 0
-	fmt.Fprintf(cfg.w, "%s %s %s %s\n", gray("staged:"), stage, gray("->"), path)
+	_, _ = fmt.Fprintf(cfg.w, "%s %s %s %s\n", gray("staged:"), stage, gray("->"), path)
 
 	for id, group := range cfg.Group {
 		// Validate the group configuration
@@ -216,7 +217,7 @@ func (cfg *Config) Run(stage string) (string, error) {
 
 	slices.Sort(msgs)
 	for _, msg := range msgs {
-		fmt.Fprintln(cfg.w, msg)
+		_, _ = fmt.Fprintln(cfg.w, msg)
 	}
 
 	return path, nil
@@ -231,7 +232,11 @@ func (cfg *Config) Watch(stage string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create watcher: %w", err)
 	}
-	defer watcher.Close()
+	defer func() {
+		if closeErr := watcher.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("failed to close watcher: %w", closeErr))
+		}
+	}()
 
 	// Run before monitoring starts
 	stagePath, err := cfg.Run(stage)
@@ -261,7 +266,7 @@ func (cfg *Config) Watch(stage string) (string, error) {
 					isWriteEvent  = event.Op&fsnotify.Write == fsnotify.Write
 				)
 				if isTarget && (isWriteEvent || isCreateEvent) {
-					fmt.Fprintln(cfg.w, cyan("rerun..."))
+					_, _ = fmt.Fprintln(cfg.w, cyan("rerun..."))
 					if _, err := cfg.Run(stage); err != nil {
 						done <- err
 						return
@@ -360,7 +365,7 @@ func (cfg *Config) createEnvrc(group Group, dir string) (string, error) {
 		b.WriteString(fmt.Sprintf("watch_file %s/.env\n", relPath))
 		b.WriteString(fmt.Sprintf("dotenv_if_exists %s/.env\n", relPath))
 	}
-	if err := os.WriteFile(dest, []byte(b.String()), 0644); err != nil {
+	if err := os.WriteFile(dest, []byte(b.String()), 0o600); err != nil {
 		return "", fmt.Errorf("failed to write .envrc file: %w", err)
 	}
 	return dest, nil
@@ -422,11 +427,15 @@ func makeEnv(group Group, base map[string]string, size int) map[string]string {
 
 func readEnv(path string, size int) (map[string]string, error) {
 	env := make(map[string]string, size)
-	f, err := os.Open(path)
+	f, err := os.Open(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("failed to close file: %w", closeErr))
+		}
+	}()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -446,15 +455,19 @@ func readEnv(path string, size int) (map[string]string, error) {
 
 func writeEnv(path string, env map[string]string) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create env dir: %w", err)
 	}
 
-	f, err := os.Create(path)
+	f, err := os.Create(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("failed to create env file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("failed to close file: %w", closeErr))
+		}
+	}()
 
 	w := bufio.NewWriter(f)
 	keys := make([]string, 0, len(env))
@@ -464,7 +477,7 @@ func writeEnv(path string, env map[string]string) error {
 	slices.Sort(keys)
 	for _, k := range keys {
 		v := env[k]
-		fmt.Fprintf(w, "%s=%s\n", k, v)
+		_, _ = fmt.Fprintf(w, "%s=%s\n", k, v)
 	}
 	if err := w.Flush(); err != nil {
 		return fmt.Errorf("failed to flush env file: %w", err)

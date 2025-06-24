@@ -1,10 +1,26 @@
 version: "2"
 linters:
-  default: standard
+  default: fast
   enable:
-    - misspell
-  disable:
     - errcheck
-formatters:
-  enable:
-    - gofmt
+    - gosec
+    - revive
+  disable:
+    - copyloopvar
+    - cyclop
+    - depguard
+    - dupl
+    - funlen
+    - gocognit
+    - goconst
+    - lll
+    - maintidx
+    - mnd
+    - nlreturn
+    - testpackage
+    - wsl
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true

@@ -1159,7 +1159,7 @@ func Test_createEnvrc(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
-			content, err := os.ReadFile(path)
+			content, err := os.ReadFile(filepath.Clean(path))
 			if err != nil {
 				t.Fatalf("failed to read written file: %v", err)
 			}
@@ -1388,7 +1388,7 @@ func Test_writeEnv(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
-			content, err := os.ReadFile(path)
+			content, err := os.ReadFile(filepath.Clean(path))
 			if err != nil {
 				t.Fatalf("failed to read written file: %v", err)
 			}
