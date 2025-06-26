@@ -3,14 +3,11 @@
   <h3 align="center">The local env manager</h3>
   <p align="center">The env splitting, delivery, replacement, and monitoring tool for monorepo</p>
   <p align="center">
-    <a href="https://github.com/nekrassov01/lem/actions/workflows/ci.yml">
-      <img src="https://github.com/nekrassov01/lem/actions/workflows/ci.yml/badge.svg" alt="CI" />
-   </a>
-    <a href="https://goreportcard.com/report/github.com/nekrassov01/lem">
-      <img src="https://goreportcard.com/badge/github.com/nekrassov01/lem" alt="Go Report Card" />
-   </a>
-      <img src="https://img.shields.io/github/license/nekrassov01/lem" alt="LICENSE" />
-      <img src="https://img.shields.io/github/v/release/nekrassov01/lem" alt="LATEST" />
+    <a href="https://github.com/nekrassov01/lem/actions/workflows/ci.yml"><img src="https://github.com/nekrassov01/lem/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+    <a href="https://goreportcard.com/report/github.com/nekrassov01/lem"><img src="https://goreportcard.com/badge/github.com/nekrassov01/lem" alt="Go Report Card" /></a>
+    <img src="https://img.shields.io/github/license/nekrassov01/lem" alt="LICENSE" />
+    <img src="https://img.shields.io/github/v/release/nekrassov01/lem" alt="LATEST" />
+    <a href="https://deepwiki.com/nekrassov01/lem"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
   </p>
 </p>
 
