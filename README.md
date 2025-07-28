@@ -17,17 +17,13 @@ LEM stands for the local env manager, and this logo was insipired by [Lemmings](
 
 ## Features
 
-The functionality is very small and supports only the following:
+This tool supports the following features:
 
-- Configuration file initialization
-- Configuration file validation
-- Splitting, prefix substitution, and distribution of the central .env
+- Generate a template for the configuration file
+- Fine-grained config validation
+- Splitting, prefix replacement, and distribution to each directory of central .env
 - Monitoring of central .env and reflection of changes
-
-## Optional features
-
-The following features are available by enabling your settings:
-
+- Stage switching and persistence of current stages
 - Detects environment variables with empty values and exits with an error
 - Automatically generate `.envrc` and use `watch_file` to have direnv monitor `.env`
 
@@ -41,89 +37,20 @@ USAGE:
    lem [global options] [command [command options]]
 
 VERSION:
-   0.0.0 (revision: b821f30)
+   0.0.0 (revision: XXXXXXX)
 
 COMMANDS:
    init      Initialize the configuration file to current directory
    validate  Validate that the configuration file is executable
+   stage     Show the current stage context
+   switch    Toggles the current stage to the specified stage
+   list      Show the env file entries in the current stage
    run       Deliver env files to the specified directories based on configuration
    watch     Watch changes in the central env and run continuously
 
 GLOBAL OPTIONS:
    --help, -h     show help
    --version, -v  print the version
-```
-
-### Init
-
-```text
-NAME:
-   lem init - Initialize the configuration file to current directory
-
-USAGE:
-   lem init [command [command options]]
-
-DESCRIPTION:
-   Init generates a sample lem.toml in the current directory.
-   You can customize this file for your use.
-
-OPTIONS:
-   --help, -h  show help
-```
-
-### Validate
-
-```text
-NAME:
-   lem validate - Validate that the configuration file is executable
-
-USAGE:
-   lem validate [command [command options]]
-
-DESCRIPTION:
-   Validate validates whether the configuration file in the current directory is executable.
-   In addition to syntax checks, it also checks whether the path exists.
-
-OPTIONS:
-   --config string, -c string  set configuration file path (default: "lem.toml")
-   --help, -h                  show help
-```
-
-### Run
-
-```text
-NAME:
-   lem run - Deliver env files to the specified directories based on configuration
-
-USAGE:
-   lem run [command [command options]]
-
-DESCRIPTION:
-   Run splits the central env based on configuration and distributes it to each directory.
-   It also checks for empty values based on configuration.
-
-OPTIONS:
-   --config string, -c string  set configuration file path (default: "lem.toml")
-   --stage string, -s string   set stage context to run (default: "default")
-   --help, -h                  show help
-```
-
-### Watch
-
-```text
-NAME:
-   lem watch - Watch changes in the central env and run continuously
-
-USAGE:
-   lem watch [command [command options]]
-
-DESCRIPTION:
-   Watch continuously monitors changes in the central env and synchronizes changes to each directory.
-
-OPTIONS:
-   --config string, -c string  set configuration file path (default: "lem.toml")
-   --stage string, -s string   set stage context to run (default: "default")
-   --help, -h                  show help
 ```
 
 ## Configuration
