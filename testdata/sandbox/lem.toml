@@ -1,6 +1,7 @@
 [stage]
 default = "master/.env"
 dev = "master/.env.development"
+noexists = "master/.env.noexists"
 
 [group.api]
 prefix = "API"
