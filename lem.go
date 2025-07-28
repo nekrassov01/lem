@@ -3,6 +3,7 @@ package lem
 import (
 	"bufio"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -32,15 +33,34 @@ var (
 	initConfig []byte
 
 	// gitDir is the directory name for the git repository.
-	// It is replaceable for testing purposes.
 	gitDir = defaultGitDir
+
+	// statePathFunc returns the path to the state file.
+	statePathFunc = defaultStatePath
 
 	// gray is a function that returns a gray color for printing messages.
 	gray = color.New(color.FgHiBlack).SprintFunc()
 
 	// cyan is a function that returns a cyan color for printing messages.
 	cyan = color.New(color.FgHiCyan).SprintFunc()
+
+	// green is a function that returns a green color for printing messages.
+	green = color.New(color.FgHiGreen).SprintFunc()
 )
+
+// defaultStatePath returns the default path to the state file.
+func defaultStatePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "lem", "state"), nil
+}
+
+// dummyStatePath returns a dummy path to the state file for testing purposes.
+func dummyStatePath() (string, error) {
+	return filepath.Join("testdata", "sandbox", "state"), nil
+}
 
 // Config holds settings such as where the central env is located,
 // how it is divided, and to which groups it is delivered.
@@ -63,6 +83,15 @@ type Group struct {
 	Replaceable   []string `toml:"replace"` // List of prefixes to be replaced with the group prefix
 	IsCheck       bool     `toml:"check"`   // Whether to check for empty values
 	DirenvSupport []string `toml:"direnv"`  // Whether to create .envrc for direnv support
+}
+
+// Entry represents an environment variable entry.
+type Entry struct {
+	Group  string // Group is the group name of the environment variable
+	Prefix string // Prefix is the prefix for the environment variable names of its group
+	Type   string // Type indicates whether the env entry is indirect
+	Name   string // Name is the key of the env entry, used for identification
+	Value  string // Value is the value of the env entry
 }
 
 // Option is an option given when loading the configuration file.
@@ -143,52 +172,135 @@ func (cfg *Config) Validate() error {
 			return err
 		}
 	}
-	_, _ = fmt.Fprintln(cfg.w, cyan("all checks passed!"))
+	_, _ = fmt.Fprintln(cfg.w, green("all checks passed!"))
 	return nil
+}
+
+// Current shows the current stage context.
+func (cfg *Config) Current() error {
+	if err := cfg.validateStageTable(); err != nil {
+		return err
+	}
+	stage, err := cfg.loadStage()
+	if err != nil {
+		return err
+	}
+	if _, err := cfg.validateStagePair(stage); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(cfg.w, cyan("current: ", stage))
+	return nil
+}
+
+// Switch switches the current stage to the specified one.
+func (cfg *Config) Switch(stage string) error {
+	if err := cfg.validateStageTable(); err != nil {
+		return err
+	}
+	if _, err := cfg.validateStagePair(stage); err != nil {
+		return err
+	}
+	if err := cfg.storeStage(stage); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(cfg.w, cyan("switched: ", stage))
+	return nil
+}
+
+// List returns a slice of Entry for all env entries of all groups for the given stage.
+// If stage is empty, returns an error.
+func (cfg *Config) List() ([]Entry, error) {
+	if err := cfg.validateStageTable(); err != nil {
+		return nil, err
+	}
+	stage, err := cfg.loadStage()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load stage: %w", err)
+	}
+	path, err := cfg.validateStagePair(stage)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.validateGroupTable(); err != nil {
+		return nil, err
+	}
+	e, n, err := readEnv(path, cfg.size)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read central env: %w", err)
+	}
+	entries := make([]Entry, 0, n)
+	for name, group := range cfg.Group {
+		for k, v := range e {
+			if after, ok := strings.CutPrefix(k, group.Prefix+"_"); ok {
+				entries = append(entries, Entry{
+					Group:  name,
+					Prefix: group.Prefix,
+					Type:   "direct",
+					Name:   after,
+					Value:  v,
+				})
+			}
+		}
+		for _, r := range group.Replaceable {
+			for k, v := range e {
+				if after, ok := strings.CutPrefix(k, r+"_"); ok {
+					entries = append(entries, Entry{
+						Group:  name,
+						Prefix: group.Prefix,
+						Type:   "indirect",
+						Name:   after,
+						Value:  v,
+					})
+				}
+			}
+		}
+	}
+	slices.SortFunc(entries, func(a, b Entry) int {
+		if a.Group != b.Group {
+			return strings.Compare(a.Group, b.Group)
+		}
+		if a.Type != b.Type {
+			return strings.Compare(a.Type, b.Type)
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+	return entries, nil
 }
 
 // Run reads the central environment and divides and distributes it
 // to each group based on the configuration file. If necessary,
 // it also checks if the environment variable values are empty.
-func (cfg *Config) Run(stage string) (string, error) {
-	// Validate the stage table exists in the configuration
+func (cfg *Config) Run() (string, error) {
 	if err := cfg.validateStageTable(); err != nil {
 		return "", err
 	}
-
-	// Validate the specified stage exists
+	stage, err := cfg.loadStage()
+	if err != nil {
+		return "", fmt.Errorf("failed to load stage: %w", err)
+	}
 	path, err := cfg.validateStagePair(stage)
 	if err != nil {
 		return "", err
 	}
-
-	// Validate the group table exists in the configuration
 	if err := cfg.validateGroupTable(); err != nil {
 		return "", err
 	}
-
-	// Read the central env
-	e, err := readEnv(path, cfg.size)
+	e, _, err := readEnv(path, cfg.size)
 	if err != nil {
 		return "", fmt.Errorf("failed to read central env: %w", err)
 	}
-
 	msgs := make([]string, len(cfg.Group))
 	i := 0
 	_, _ = fmt.Fprintf(cfg.w, "%s %s %s %s\n", gray("staged:"), stage, gray("->"), path)
-
 	for id, group := range cfg.Group {
-		// Validate the group configuration
 		dir, err := cfg.validateGroupPair(id, group)
 		if err != nil {
 			return "", err
 		}
-
-		// Gathers entries from the central env that forward match the group prefix.
-		// Also, replacement targets set in the group are added after replacing them with the group prefix.
+		// Collect prefix matching entries from the central env to the group
+		// Some entries are added with group prefixes based on configuration
 		o := makeEnv(group, e, cfg.size)
-
-		// Check for empty values if IsCheck is set
+		// Check for empty values if specified
 		if group.IsCheck {
 			for k, v := range o {
 				if v == "" || v == "''" || v == `""` || v == "``" {
@@ -196,7 +308,6 @@ func (cfg *Config) Run(stage string) (string, error) {
 				}
 			}
 		}
-
 		// Create .envrc file if specified
 		if len(group.DirenvSupport) != 0 {
 			_, err = cfg.createEnvrc(group, dir)
@@ -204,30 +315,25 @@ func (cfg *Config) Run(stage string) (string, error) {
 				return "", fmt.Errorf("failed to create .envrc for group.%s: %w", id, err)
 			}
 		}
-
 		// Write the environment variables to the group's env file
 		target := filepath.Join(dir, ".env")
 		if err := writeEnv(target, o); err != nil {
 			return "", fmt.Errorf("failed to write env file for group.%s: %w", id, err)
 		}
-
 		msgs[i] = fmt.Sprintf("%s group.%s %s %s", gray("distributed:"), id, gray("->"), target)
 		i++
 	}
-
 	slices.Sort(msgs)
 	for _, msg := range msgs {
 		_, _ = fmt.Fprintln(cfg.w, msg)
 	}
-
 	return path, nil
 }
 
 // Watch watches for changes in the env file for the specified
 // stage and executes the run command when a change is detected.
 // Monitoring continues as long as it is not interrupted.
-func (cfg *Config) Watch(stage string) (string, error) {
-	// Create a central env watcher
+func (cfg *Config) Watch() (string, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return "", fmt.Errorf("failed to create watcher: %w", err)
@@ -237,22 +343,15 @@ func (cfg *Config) Watch(stage string) (string, error) {
 			err = errors.Join(err, fmt.Errorf("failed to close watcher: %w", closeErr))
 		}
 	}()
-
-	// Run before monitoring starts
-	stagePath, err := cfg.Run(stage)
+	stagePath, err := cfg.Run()
 	if err != nil {
 		return "", err
 	}
-
-	// Add the directory of the stage file to the watcher
 	dir := filepath.Dir(stagePath)
 	if err := watcher.Add(dir); err != nil {
 		return "", fmt.Errorf("failed to add dir to watcher: %w", err)
 	}
-
-	// Watch for changes in the stage file
 	done := make(chan error)
-
 	go func() {
 		for {
 			select {
@@ -267,7 +366,7 @@ func (cfg *Config) Watch(stage string) (string, error) {
 				)
 				if isTarget && (isWriteEvent || isCreateEvent) {
 					_, _ = fmt.Fprintln(cfg.w, cyan("rerun..."))
-					if _, err := cfg.Run(stage); err != nil {
+					if _, err := cfg.Run(); err != nil {
 						done <- err
 						return
 					}
@@ -281,13 +380,13 @@ func (cfg *Config) Watch(stage string) (string, error) {
 			}
 		}
 	}()
-
 	if err := <-done; err != nil {
 		return "", err
 	}
-	return stagePath, nil
+	return stagePath, err
 }
 
+// validateStageTable checks if the stage table is set in the configuration.
 func (cfg *Config) validateStageTable() error {
 	if len(cfg.Stage) == 0 {
 		return fmt.Errorf("failed to validate stage: stage not set in %s", cfg.path)
@@ -295,6 +394,7 @@ func (cfg *Config) validateStageTable() error {
 	return nil
 }
 
+// validateStagePair checks if the stage is set in the configuration and returns its absolute path.
 func (cfg *Config) validateStagePair(stage string) (string, error) {
 	path, ok := cfg.Stage[stage]
 	if !ok {
@@ -310,6 +410,7 @@ func (cfg *Config) validateStagePair(stage string) (string, error) {
 	return absPath, nil
 }
 
+// validateGroupTable checks if the group table is set in the configuration.
 func (cfg *Config) validateGroupTable() error {
 	if len(cfg.Group) == 0 {
 		return fmt.Errorf("failed to validate group: group not set in %s", cfg.path)
@@ -317,6 +418,7 @@ func (cfg *Config) validateGroupTable() error {
 	return nil
 }
 
+// validateGroupPair checks if the group is set in the configuration and returns its absolute path.
 func (cfg *Config) validateGroupPair(id string, group Group) (string, error) {
 	if group.Prefix == "" {
 		return "", fmt.Errorf("failed to validate group.%s: prefix not set in %s", id, cfg.path)
@@ -345,6 +447,7 @@ func (cfg *Config) validateGroupPair(id string, group Group) (string, error) {
 	return absPath, nil
 }
 
+// createEnvrc creates a .envrc file for direnv support in the specified group directory.
 func (cfg *Config) createEnvrc(group Group, dir string) (string, error) {
 	dest := filepath.Join(dir, ".envrc")
 	b := strings.Builder{}
@@ -371,6 +474,7 @@ func (cfg *Config) createEnvrc(group Group, dir string) (string, error) {
 	return dest, nil
 }
 
+// resolvePath resolves the given path relative to the configuration directory.
 func (cfg *Config) resolvePath(path string) (string, bool, error) {
 	var absPath string
 	if filepath.IsAbs(path) {
@@ -392,6 +496,56 @@ func (cfg *Config) resolvePath(path string) (string, bool, error) {
 	return absPath, info.IsDir(), nil
 }
 
+// storeStage stores the current stage in the state file.
+func (cfg *Config) storeStage(stage string) error {
+	path, err := statePathFunc()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	state := map[string]map[string]string{}
+	if data, err := os.ReadFile(filepath.Clean(path)); err == nil && len(data) > 0 {
+		if err := json.Unmarshal(data, &state); err != nil {
+			return err
+		}
+	}
+	state[cfg.path] = map[string]string{"stage": stage}
+	b, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, b, 0o600)
+}
+
+// loadStage loads the current stage from the state file.
+func (cfg *Config) loadStage() (string, error) {
+	path, err := statePathFunc()
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	m := map[string]map[string]string{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		return "", err
+	}
+	v, ok := m[cfg.path]
+	if !ok {
+		return "", fmt.Errorf("no stage stored for config: %s", cfg.path)
+	}
+	stage, ok := v["stage"]
+	if !ok {
+		return "", fmt.Errorf("no stage value for config: %s", cfg.path)
+	}
+	return stage, nil
+}
+
+// projectRoot finds the project root directory by looking for the .git directory.
+// It traverses up the directory tree until it finds the .git directory or reaches the root.
 func projectRoot(baseDir string) string {
 	current := filepath.Clean(baseDir)
 	for {
@@ -409,6 +563,42 @@ func projectRoot(baseDir string) string {
 	return baseDir
 }
 
+// readEnv reads the environment variables from the specified path and returns them as a map.
+func readEnv(path string, size int) (map[string]string, int, error) {
+	env := make(map[string]string, size)
+	f, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("failed to close file: %w", closeErr))
+		}
+	}()
+	i := 0
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		kv := strings.SplitN(line, "=", 2)
+		if len(kv) == 2 {
+			k := strings.TrimSpace(kv[0])
+			v := strings.TrimSpace(kv[1])
+			env[k] = v
+			i++
+		}
+	}
+	if scanErr := scanner.Err(); scanErr != nil {
+		err = scanErr
+		return nil, 0, err
+	}
+	return env, i, err
+}
+
+// makeEnv creates a map of environment variables for the specified group.
+// It filters the base environment variables based on the group's prefix and replaceable prefixes.
 func makeEnv(group Group, base map[string]string, size int) map[string]string {
 	e := make(map[string]string, size)
 	for k, v := range base {
@@ -425,40 +615,12 @@ func makeEnv(group Group, base map[string]string, size int) map[string]string {
 	return e
 }
 
-func readEnv(path string, size int) (map[string]string, error) {
-	env := make(map[string]string, size)
-	f, err := os.Open(filepath.Clean(path))
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if closeErr := f.Close(); closeErr != nil {
-			err = errors.Join(err, fmt.Errorf("failed to close file: %w", closeErr))
-		}
-	}()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		kv := strings.SplitN(line, "=", 2)
-		if len(kv) == 2 {
-			k := strings.TrimSpace(kv[0])
-			v := strings.TrimSpace(kv[1])
-			env[k] = v
-		}
-	}
-	return env, scanner.Err()
-}
-
+// writeEnv writes the environment variables to the specified path.
 func writeEnv(path string, env map[string]string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create env dir: %w", err)
 	}
-
 	f, err := os.Create(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("failed to create env file: %w", err)
@@ -468,7 +630,6 @@ func writeEnv(path string, env map[string]string) error {
 			err = errors.Join(err, fmt.Errorf("failed to close file: %w", closeErr))
 		}
 	}()
-
 	w := bufio.NewWriter(f)
 	keys := make([]string, 0, len(env))
 	for k := range env {
@@ -479,12 +640,13 @@ func writeEnv(path string, env map[string]string) error {
 		v := env[k]
 		_, _ = fmt.Fprintf(w, "%s=%s\n", k, v)
 	}
-	if err := w.Flush(); err != nil {
-		return fmt.Errorf("failed to flush env file: %w", err)
+	if flushErr := w.Flush(); flushErr != nil {
+		return fmt.Errorf("failed to flush env file: %w", flushErr)
 	}
-	return nil
+	return err
 }
 
+// sanitizePath sanitizes the given path by resolving it to an absolute path.
 func sanitizePath(path string) (string, bool, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
