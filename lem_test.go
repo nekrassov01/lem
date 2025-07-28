@@ -2,6 +2,7 @@ package lem
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -13,10 +14,32 @@ import (
 
 func TestMain(m *testing.M) {
 	gitDir = dummyGitDir
+	statePathFunc = dummyStatePath
 	defer func() {
 		gitDir = defaultGitDir
+		statePathFunc = defaultStatePath
+		_ = os.Remove("testdata/sandbox/state")
 	}()
 	m.Run()
+}
+
+func prepareState(path, stage string) {
+	statePath, err := dummyStatePath()
+	if err != nil {
+		panic(err)
+	}
+	m := map[string]map[string]string{
+		path: {
+			"stage": stage,
+		},
+	}
+	data, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(statePath, data, 0o0600); err != nil {
+		panic(err)
+	}
 }
 
 func TestWithWriter(t *testing.T) {
@@ -141,8 +164,9 @@ func TestLoad(t *testing.T) {
 			expected: expected{
 				cfg: &Config{
 					Stage: map[string]string{
-						"default": "master/.env",
-						"dev":     "master/.env.development",
+						"default":  "master/.env",
+						"dev":      "master/.env.development",
+						"noexists": "master/.env.noexists",
 					},
 					Group: map[string]Group{
 						"api": {
@@ -190,8 +214,9 @@ func TestLoad(t *testing.T) {
 			expected: expected{
 				cfg: &Config{
 					Stage: map[string]string{
-						"default": "master/.env",
-						"dev":     "master/.env.development",
+						"default":  "master/.env",
+						"dev":      "master/.env.development",
+						"noexists": "master/.env.noexists",
 					},
 					Group: map[string]Group{
 						"api": {
@@ -340,7 +365,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: false,
@@ -360,7 +385,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: true,
@@ -382,7 +407,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: true,
@@ -404,7 +429,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: true,
@@ -426,7 +451,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: true,
@@ -463,7 +488,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: true,
@@ -485,7 +510,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: true,
@@ -507,7 +532,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: true,
@@ -529,7 +554,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: true,
@@ -551,7 +576,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: true,
@@ -573,7 +598,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: true,
@@ -596,7 +621,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: true,
@@ -619,7 +644,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
+				w:    io.Discard,
 			},
 			expected: expected{
 				isError: true,
@@ -645,7 +670,128 @@ func TestConfig_Validate(t *testing.T) {
 	}
 }
 
-func TestConfig_Run(t *testing.T) {
+func TestConfig_Current(t *testing.T) {
+	type fields struct {
+		Stage map[string]string
+		Group map[string]Group
+		path  string
+		size  int
+		w     io.Writer
+	}
+	type expected struct {
+		isError bool
+	}
+	tests := []struct {
+		name     string
+		fields   fields
+		expected expected
+		setup    func()
+	}{
+		{
+			name: "basic",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "testdata/sandbox/master/.env",
+				},
+				path: "testdata/sandbox/lem.toml",
+				size: 32,
+				w:    io.Discard,
+			},
+			expected: expected{
+				isError: false,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
+			},
+		},
+		{
+			name: "stage table not found",
+			fields: fields{
+				Stage: nil,
+				path:  "testdata/sandbox/lem.toml",
+				size:  32,
+				w:     io.Discard,
+			},
+			expected: expected{
+				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
+			},
+		},
+		{
+			name: "missing stage in config",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "testdata/sandbox/master/.env",
+				},
+				path: "testdata/sandbox/lem.toml",
+				size: 32,
+				w:    io.Discard,
+			},
+			expected: expected{
+				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "dummy")
+			},
+		},
+		{
+			name: "missing env file",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "testdata/sandbox/master/.env",
+				},
+				path: "testdata/sandbox/lem.toml",
+				size: 32,
+				w:    io.Discard,
+			},
+			expected: expected{
+				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "noexists")
+			},
+		},
+		{
+			name: "missing config path in state",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "testdata/sandbox/master/.env",
+				},
+				path: "testdata/sandbox/lem.toml",
+				size: 32,
+				w:    io.Discard,
+			},
+			expected: expected{
+				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/invalid", "default")
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup()
+			cfg := &Config{
+				Stage: tt.fields.Stage,
+				Group: tt.fields.Group,
+				path:  tt.fields.path,
+				size:  tt.fields.size,
+				w:     tt.fields.w,
+			}
+			err := cfg.Current()
+			if tt.expected.isError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestConfig_Switch(t *testing.T) {
 	type fields struct {
 		Stage map[string]string
 		Group map[string]Group
@@ -657,7 +803,6 @@ func TestConfig_Run(t *testing.T) {
 		stage string
 	}
 	type expected struct {
-		path    string
 		isError bool
 	}
 	tests := []struct {
@@ -665,6 +810,273 @@ func TestConfig_Run(t *testing.T) {
 		fields   fields
 		args     args
 		expected expected
+		setup    func()
+	}{
+		{
+			name: "basic",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "testdata/sandbox/master/.env",
+				},
+				path: "testdata/sandbox/lem.toml",
+				size: 32,
+				w:    io.Discard,
+			},
+			args: args{
+				stage: "default",
+			},
+			expected: expected{
+				isError: false,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
+			},
+		},
+		{
+			name: "stage table not found",
+			fields: fields{
+				Stage: nil,
+				path:  "testdata/sandbox/lem.toml",
+				size:  32,
+				w:     io.Discard,
+			},
+			args: args{
+				stage: "default",
+			},
+			expected: expected{
+				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
+			},
+		},
+		{
+			name: "missing stage in config",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "testdata/sandbox/master/.env",
+				},
+				path: "testdata/sandbox/lem.toml",
+				size: 32,
+				w:    io.Discard,
+			},
+			args: args{
+				stage: "dummy",
+			},
+			expected: expected{
+				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
+			},
+		},
+		{
+			name: "missing config path in state",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "testdata/sandbox/master/.env",
+				},
+				path: "testdata/sandbox/lem.toml",
+				size: 32,
+				w:    io.Discard,
+			},
+			args: args{
+				stage: "default",
+			},
+			expected: expected{
+				isError: false, // Written as a new config path
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/invalid", "default")
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup()
+			cfg := &Config{
+				Stage: tt.fields.Stage,
+				Group: tt.fields.Group,
+				path:  tt.fields.path,
+				size:  tt.fields.size,
+				w:     tt.fields.w,
+			}
+			err := cfg.Switch(tt.args.stage)
+			if tt.expected.isError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestConfig_List(t *testing.T) {
+	type fields struct {
+		Stage map[string]string
+		Group map[string]Group
+		path  string
+		size  int
+		w     io.Writer
+	}
+	type expected struct {
+		entries []Entry
+		isError bool
+	}
+	tests := []struct {
+		name     string
+		fields   fields
+		expected expected
+		setup    func()
+	}{
+		{
+			name: "basic",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "testdata/sandbox/master/.env",
+				},
+				Group: map[string]Group{
+					"api": {
+						Prefix:        "API",
+						Dir:           "./api",
+						Replaceable:   []string{"REPLACEABLE1", "REPLACEABLE2"},
+						IsCheck:       true,
+						DirenvSupport: []string{"api", "ui"},
+					},
+					"ui": {
+						Prefix:        "UI",
+						Dir:           "./ui",
+						Replaceable:   []string{"REPLACEABLE1"},
+						IsCheck:       false,
+						DirenvSupport: []string{"ui"},
+					},
+				},
+				path: "testdata/sandbox/lem.toml",
+				size: 32,
+				w:    io.Discard,
+			},
+			expected: expected{
+				entries: []Entry{
+					{Group: "api", Prefix: "API", Type: "direct", Name: "1_ENV", Value: "111"},
+					{Group: "api", Prefix: "API", Type: "direct", Name: "2_ENV", Value: "\"222\""},
+					{Group: "api", Prefix: "API", Type: "direct", Name: "3_ENV", Value: "'333'"},
+					{Group: "api", Prefix: "API", Type: "direct", Name: "4_ENV", Value: "`444`"},
+					{Group: "api", Prefix: "API", Type: "indirect", Name: "6_ENV", Value: "6 7 8"},
+					{Group: "ui", Prefix: "UI", Type: "direct", Name: "5_ENV", Value: "555"},
+					{Group: "ui", Prefix: "UI", Type: "indirect", Name: "6_ENV", Value: "6 7 8"},
+				},
+				isError: false,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
+			},
+		},
+		{
+			name: "stage table not found",
+			fields: fields{
+				Stage: nil,
+				path:  "testdata/sandbox/lem.toml",
+				size:  32,
+				w:     io.Discard,
+			},
+			expected: expected{
+				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
+			},
+		},
+		{
+			name: "missing stage in config",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "testdata/sandbox/master/.env",
+				},
+				path: "testdata/sandbox/lem.toml",
+				size: 32,
+				w:    io.Discard,
+			},
+			expected: expected{
+				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "dummy")
+			},
+		},
+		{
+			name: "group table not found",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "testdata/sandbox/master/.env",
+				},
+				Group: nil,
+				path:  "testdata/sandbox/lem.toml",
+				size:  32,
+				w:     os.Stdout,
+			},
+			expected: expected{
+				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
+			},
+		},
+		{
+			name: "missing config path in state",
+			fields: fields{
+				Stage: map[string]string{
+					"default": "testdata/sandbox/master/.env",
+				},
+				path: "testdata/sandbox/lem.toml",
+				size: 32,
+				w:    io.Discard,
+			},
+			expected: expected{
+				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/invalid", "default")
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup()
+			cfg := &Config{
+				Stage: tt.fields.Stage,
+				Group: tt.fields.Group,
+				path:  tt.fields.path,
+				size:  tt.fields.size,
+				w:     tt.fields.w,
+			}
+			actual, err := cfg.List()
+			if tt.expected.isError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, actual, tt.expected.entries)
+		})
+	}
+}
+
+func TestConfig_Run(t *testing.T) {
+	type fields struct {
+		Stage map[string]string
+		Group map[string]Group
+		path  string
+		size  int
+		w     io.Writer
+	}
+	type expected struct {
+		path    string
+		isError bool
+	}
+	tests := []struct {
+		name     string
+		fields   fields
+		expected expected
+		setup    func()
 	}{
 		{
 			name: "basic",
@@ -683,14 +1095,14 @@ func TestConfig_Run(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
-			},
-			args: args{
-				stage: "default",
+				w:    io.Discard,
 			},
 			expected: expected{
 				path:    "testdata/sandbox/master/.env",
 				isError: false,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
 			},
 		},
 		{
@@ -707,14 +1119,14 @@ func TestConfig_Run(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
-			},
-			args: args{
-				stage: "default",
+				w:    io.Discard,
 			},
 			expected: expected{
 				path:    "",
 				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
 			},
 		},
 		{
@@ -733,14 +1145,14 @@ func TestConfig_Run(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
-			},
-			args: args{
-				stage: "default",
+				w:    io.Discard,
 			},
 			expected: expected{
 				path:    "",
 				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
 			},
 		},
 		{
@@ -754,12 +1166,12 @@ func TestConfig_Run(t *testing.T) {
 				size:  32,
 				w:     os.Stdout,
 			},
-			args: args{
-				stage: "default",
-			},
 			expected: expected{
 				path:    "",
 				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
 			},
 		},
 		{
@@ -778,14 +1190,14 @@ func TestConfig_Run(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
-			},
-			args: args{
-				stage: "default",
+				w:    io.Discard,
 			},
 			expected: expected{
 				path:    "",
 				isError: true,
+			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
 			},
 		},
 		{
@@ -804,71 +1216,47 @@ func TestConfig_Run(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
-			},
-			args: args{
-				stage: "default",
+				w:    io.Discard,
 			},
 			expected: expected{
 				path:    "",
 				isError: true,
 			},
-		},
-		{
-			name: "invalid stage passed",
-			fields: fields{
-				Stage: map[string]string{
-					"default": "testdata/sandbox/master/.env",
-				},
-				Group: map[string]Group{
-					"api": {
-						Prefix:      "API",
-						Dir:         "testdata/sandbox/api",
-						Replaceable: []string{"REPLACEABLE1", "REPLACEABLE2"},
-						IsCheck:     true,
-					},
-				},
-				path: "testdata/sandbox/lem.toml",
-				size: 32,
-				w:    os.Stdout,
-			},
-			args: args{
-				stage: "dummy",
-			},
-			expected: expected{
-				path:    "",
-				isError: true,
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
 			},
 		},
 		{
-			name: "empty value in central env",
+			name: "empty value",
 			fields: fields{
 				Stage: map[string]string{
 					"default": "testdata/sandbox/master/.env.error",
 				},
 				Group: map[string]Group{
 					"api": {
-						Prefix:      "API",
-						Dir:         "testdata/sandbox/api",
-						Replaceable: []string{"REPLACEABLE1", "REPLACEABLE2"},
-						IsCheck:     true,
+						Prefix:        "API",
+						Dir:           "testdata/sandbox/api",
+						Replaceable:   []string{"REPLACEABLE1", "REPLACEABLE2"},
+						IsCheck:       true,
+						DirenvSupport: []string{"api"},
 					},
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
-			},
-			args: args{
-				stage: "default",
+				w:    io.Discard,
 			},
 			expected: expected{
 				path:    "",
 				isError: true,
 			},
+			setup: func() {
+				prepareState("testdata/sandbox/lem.toml", "default")
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			tt.setup()
 			cfg := &Config{
 				Stage: tt.fields.Stage,
 				Group: tt.fields.Group,
@@ -876,7 +1264,7 @@ func TestConfig_Run(t *testing.T) {
 				size:  tt.fields.size,
 				w:     tt.fields.w,
 			}
-			actual, err := cfg.Run(tt.args.stage)
+			actual, err := cfg.Run()
 			if tt.expected.isError {
 				assert.Error(t, err)
 			} else {
@@ -895,9 +1283,6 @@ func TestConfig_Watch(t *testing.T) {
 		size  int
 		w     io.Writer
 	}
-	type args struct {
-		stage string
-	}
 	type expected struct {
 		path    string
 		isError bool
@@ -905,7 +1290,6 @@ func TestConfig_Watch(t *testing.T) {
 	tests := []struct {
 		name     string
 		fields   fields
-		args     args
 		expected expected
 	}{
 		{
@@ -922,10 +1306,7 @@ func TestConfig_Watch(t *testing.T) {
 				},
 				path: "testdata/sandbox/lem.toml",
 				size: 32,
-				w:    os.Stdout,
-			},
-			args: args{
-				stage: "default",
+				w:    io.Discard,
 			},
 			expected: expected{
 				path:    "",
@@ -942,7 +1323,7 @@ func TestConfig_Watch(t *testing.T) {
 				size:  tt.fields.size,
 				w:     tt.fields.w,
 			}
-			actual, err := cfg.Watch(tt.args.stage)
+			actual, err := cfg.Watch()
 			if tt.expected.isError {
 				assert.Error(t, err)
 			} else {
@@ -1237,7 +1618,8 @@ func Test_readEnv(t *testing.T) {
 		size int
 	}
 	type expected struct {
-		env     map[string]string
+		e       map[string]string
+		n       int
 		isError bool
 	}
 	tests := []struct {
@@ -1252,7 +1634,7 @@ func Test_readEnv(t *testing.T) {
 				size: 32,
 			},
 			expected: expected{
-				env: map[string]string{
+				e: map[string]string{
 					"API_1_ENV":          "111",
 					"API_2_ENV":          "\"222\"",
 					"API_3_ENV":          "'333'",
@@ -1260,6 +1642,7 @@ func Test_readEnv(t *testing.T) {
 					"UI_5_ENV":           "555",
 					"REPLACEABLE1_6_ENV": "6 7 8",
 				},
+				n:       6,
 				isError: false,
 			},
 		},
@@ -1270,7 +1653,8 @@ func Test_readEnv(t *testing.T) {
 				size: 32,
 			},
 			expected: expected{
-				env:     map[string]string{},
+				e:       map[string]string{},
+				n:       0,
 				isError: false,
 			},
 		},
@@ -1278,13 +1662,14 @@ func Test_readEnv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := readEnv(tt.args.path, tt.args.size)
+			m, n, err := readEnv(tt.args.path, tt.args.size)
 			if tt.expected.isError {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
 			}
-			assert.Equal(t, tt.expected.env, m)
+			assert.Equal(t, tt.expected.e, m)
+			assert.Equal(t, tt.expected.n, n)
 		})
 	}
 }
