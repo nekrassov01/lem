@@ -13,19 +13,20 @@
 
 ## Overview
 
-LEM stands for the local env manager, and this logo was insipired by [Lemmings](https://en.wikipedia.org/wiki/Lemmings_%28video_game%29). This tool is intended for configurations where, for example, back-end APIs, front-end UIs, infrastructure resource definitions, etc. are managed in a single repository, and provides utilities for managing .env files that should be in separate directory roots in one central .env based on configuration file.
+LEM stands for Local Env Manager, and its logo is inspired by [Lemmings](https://en.wikipedia.org/wiki/Lemmings_%28video_game%29). This tool is designed for monorepos where back-end APIs, front-end UIs, infrastructure resources, and more are managed together. It provides utilities to centrally manage .env files and distribute them to separate directory roots according to your configuration.
+The basic concept is to use prefixes for environment variable management, while also supporting unprefixed variables for flexible delivery.
 
 ## Features
 
 This tool supports the following features:
 
 - Generate a template for the configuration file
-- Fine-grained config validation
-- Splitting, prefix replacement, and distribution to each directory of central .env
-- Monitoring of central .env and reflection of changes
-- Stage switching and persistence of current stages
-- Detects environment variables with empty values and exits with an error
-- Automatically generate `.envrc` and use `watch_file` to have direnv monitor `.env`
+- Validate configuration with fine granularity
+- Switch stages and persist the current stage
+- Split, replace prefixes, and distribute the central .env to each directory
+- Monitor the central .env and reflect changes automatically
+- Detect empty environment variable values and exit with an error
+- Automatically generate `.envrc` and use `watch_file` for direnv integration
 
 ## Commands
 
@@ -68,6 +69,7 @@ prod = "<central-env-dir>/.env.production"
 prefix = "API"
 dir = "./backend"
 replace = ["REPLACEABLE1"]
+plain = ["PLAIN1"]
 check = true
 direnv = ["api", "ui"]
 
@@ -75,6 +77,7 @@ direnv = ["api", "ui"]
 prefix = "UI"
 dir = "./frontend"
 replace = ["REPLACEABLE2"]
+plain = ["PLAIN2"]
 check = true
 direnv = ["ui"]
 ```
@@ -88,6 +91,7 @@ direnv = ["ui"]
 | `group.<id>` | `prefix`   | string          | The prefixes environment variables to be delivered by the group.                                                    |
 | `group.<id>` | `dir`      | string          | The destination for the group to be delivered.                                                                      |
 | `group.<id>` | `replace`  | array\<string\> | The Prefixes of the environment variable to be delivered after being replaced by the `prefix` defined by the group. |
+| `group.<id>` | `plain`    | array\<string\> | The environment variables to be delivered without prefixes.                                                         |
 | `group.<id>` | `check`    | bool            | Whether the group performs an empty value check or not.                                                             |
 | `group.<id>` | `direnv`   | array\<id\>     | Automatically generate `.envrc` in each directory, write `watch_file` to track changes.                             |
 
