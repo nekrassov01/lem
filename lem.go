@@ -80,9 +80,10 @@ type Config struct {
 type Group struct {
 	Prefix        string   `toml:"prefix"`  // Prefix for the environment variable names
 	Dir           string   `toml:"dir"`     // Directory to which the environment variables are delivered
-	Replaceable   []string `toml:"replace"` // List of prefixes to be replaced with the group prefix
+	Replaceable   []string `toml:"replace"` // List of prefixes to be delivered by replacing group prefixes
+	Plain         []string `toml:"plain"`   // List of environment variables delivered without prefixes
+	DirenvSupport []string `toml:"direnv"`  // Groups for which .envrc is generated
 	IsCheck       bool     `toml:"check"`   // Whether to check for empty values
-	DirenvSupport []string `toml:"direnv"`  // Whether to create .envrc for direnv support
 }
 
 // Entry represents an environment variable entry.
@@ -241,9 +242,9 @@ func (cfg *Config) List() ([]Entry, error) {
 				})
 			}
 		}
-		for _, r := range group.Replaceable {
+		for _, prefix := range group.Replaceable {
 			for k, v := range e {
-				if after, ok := strings.CutPrefix(k, r+"_"); ok {
+				if after, ok := strings.CutPrefix(k, prefix+"_"); ok {
 					entries = append(entries, Entry{
 						Group:  name,
 						Prefix: group.Prefix,
@@ -252,6 +253,17 @@ func (cfg *Config) List() ([]Entry, error) {
 						Value:  v,
 					})
 				}
+			}
+		}
+		for _, key := range group.Plain {
+			if v, ok := e[key]; ok {
+				entries = append(entries, Entry{
+					Group:  name,
+					Prefix: group.Prefix,
+					Type:   "plain",
+					Name:   key,
+					Value:  v,
+				})
 			}
 		}
 	}
@@ -436,6 +448,9 @@ func (cfg *Config) validateGroupPair(id string, group Group) (string, error) {
 	if slices.Contains(group.Replaceable, "") {
 		return "", fmt.Errorf("failed to validate: group.%s: `replace` contains empty", id)
 	}
+	if slices.Contains(group.Plain, "") {
+		return "", fmt.Errorf("failed to validate: group.%s: `plain` contains empty", id)
+	}
 	if slices.Contains(group.DirenvSupport, "") {
 		return "", fmt.Errorf("failed to validate: group.%s: `direnv` contains empty", id)
 	}
@@ -609,6 +624,11 @@ func makeEnv(group Group, base map[string]string, size int) map[string]string {
 			if strings.HasPrefix(k, prefix+"_") {
 				u := strings.Replace(k, prefix, group.Prefix, 1)
 				e[u] = v
+			}
+		}
+		for _, key := range group.Plain {
+			if k == key {
+				e[k] = v
 			}
 		}
 	}

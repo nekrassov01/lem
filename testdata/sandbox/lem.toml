@@ -1,17 +1,19 @@
 [stage]
-default = "master/.env"
-dev = "master/.env.development"
+default  = "master/.env"
+dev      = "master/.env.development"
 noexists = "master/.env.noexists"
 
 [group.api]
-prefix = "API"
-dir = "./api"
+prefix  = "API"
+dir     = "./api"
 replace = ["REPLACEABLE1", "REPLACEABLE2"]
-check = true
-direnv = ["api", "ui"]
+plain   = ["FOO", "BAR"]
+direnv  = ["api", "ui"]
+check   = true
 
 [group.ui]
-prefix = "UI"
-dir = "./ui"
+prefix  = "UI"
+dir     = "./ui"
 replace = ["REPLACEABLE1"]
-direnv = ["ui"]
+plain   = ["BAZ"]
+direnv  = ["ui"]
