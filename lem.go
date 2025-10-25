@@ -119,20 +119,38 @@ func Init() error {
 
 // Load loads and instantiates the specified configuration file path.
 func Load(path string, opts ...Option) (*Config, error) {
-	absPath, isDir, err := sanitizePath(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to validate config path: %w", err)
+	var absPath string
+	cfg := &Config{}
+	if path == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current directory: %w", err)
+		}
+		cfg.root = projectRoot(cwd)
+		absPath, err = cfg.findConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to find config file: %w", err)
+		}
+	} else {
+		var err error
+		absPath, err = sanitizePath(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to validate config path: %w", err)
+		}
+		cfg.root = projectRoot(filepath.Dir(absPath))
 	}
-	if isDir {
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat config path: %w", err)
+	}
+	if info.IsDir() {
 		return nil, fmt.Errorf("failed to validate config path: %s: is a directory", path)
 	}
-	cfg := &Config{}
 	if _, err := toml.DecodeFile(absPath, cfg); err != nil {
 		return nil, fmt.Errorf("failed to decode config file: %w", err)
 	}
 	cfg.path = absPath
 	cfg.dir = filepath.Dir(absPath)
-	cfg.root = projectRoot(cfg.dir)
 	cfg.size = 32
 	cfg.w = os.Stdout
 	for _, opt := range opts {
@@ -546,6 +564,31 @@ func (cfg *Config) loadStage() (string, error) {
 	return stage, nil
 }
 
+// findConfig searches for the nearest lem.toml from the current directory up to cfg.root.
+func (cfg *Config) findConfig() (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current directory: %w", err)
+	}
+	dir := cwd
+	for {
+		candidate := filepath.Join(dir, initConfigPath)
+		info, err := os.Stat(candidate)
+		if err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+		if dir == cfg.root {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", fmt.Errorf("config file lem.toml not found from %s up to project root %s", cwd, cfg.root)
+}
+
 // projectRoot finds the project root directory by looking for the .git directory.
 // It traverses up the directory tree until it finds the .git directory or reaches the root.
 func projectRoot(baseDir string) string {
@@ -654,14 +697,13 @@ func writeEnv(path string, env map[string]string) error {
 }
 
 // sanitizePath sanitizes the given path by resolving it to an absolute path.
-func sanitizePath(path string) (string, bool, error) {
+func sanitizePath(path string) (string, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return "", false, fmt.Errorf("failed to get abs path: %w", err)
+		return "", fmt.Errorf("failed to get abs path: %w", err)
 	}
-	info, err := os.Stat(absPath)
-	if err != nil {
-		return "", false, fmt.Errorf("failed to stat sanitized path: %w", err)
+	if _, err := os.Stat(absPath); err != nil {
+		return "", fmt.Errorf("failed to stat sanitized path: %w", err)
 	}
-	return absPath, info.IsDir(), nil
+	return absPath, nil
 }
