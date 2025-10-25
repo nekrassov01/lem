@@ -17,23 +17,15 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-const (
-	// initConfigPath is the default path to the configuration file.
-	initConfigPath = "lem.toml"
-
-	// defaultGitDir is the default directory name for the git repository.
-	defaultGitDir = ".git"
-
-	// dummyGitDir is a dummy directory name used for testing purposes.
-	dummyGitDir = ".git.dummy"
-)
+// initConfigPath is the default path to the configuration file.
+const initConfigPath = "lem.toml"
 
 var (
 	//go:embed lem.toml
 	initConfig []byte
 
 	// gitDir is the directory name for the git repository.
-	gitDir = defaultGitDir
+	gitDir = ".git"
 
 	// statePathFunc returns the path to the state file.
 	statePathFunc = defaultStatePath
@@ -55,11 +47,6 @@ func defaultStatePath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".config", "lem", "state"), nil
-}
-
-// dummyStatePath returns a dummy path to the state file for testing purposes.
-func dummyStatePath() (string, error) {
-	return filepath.Join("testdata", "sandbox", "state"), nil
 }
 
 // Config holds settings such as where the central env is located,

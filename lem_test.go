@@ -12,6 +12,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	// defaultGitDir is the default directory name for the git repository.
+	defaultGitDir = ".git"
+
+	// dummyGitDir is a dummy directory name used for testing purposes.
+	dummyGitDir = ".git.dummy"
+)
+
 func TestMain(m *testing.M) {
 	gitDir = dummyGitDir
 	statePathFunc = dummyStatePath
@@ -21,6 +29,11 @@ func TestMain(m *testing.M) {
 		_ = os.Remove("testdata/sandbox/state")
 	}()
 	m.Run()
+}
+
+// dummyStatePath returns a dummy path to the state file for testing purposes.
+func dummyStatePath() (string, error) {
+	return filepath.Join("testdata", "sandbox", "state"), nil
 }
 
 func prepareState(path, stage string) {
