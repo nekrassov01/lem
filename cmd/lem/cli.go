@@ -17,7 +17,6 @@ func newCmd(w, ew io.Writer) *cli.Command {
 		Name:    "config",
 		Aliases: []string{"c"},
 		Usage:   "set configuration file path",
-		Value:   "lem.toml",
 	}
 	before := func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 		path := cmd.String(config.Name)
@@ -107,12 +106,18 @@ func newCmd(w, ew io.Writer) *cli.Command {
 			},
 			{
 				Name:        "run",
-				Usage:       "Deliver env files to the specified directories based on configuration",
-				Description: "Run splits the central env based on configuration and distributes it to each directory.\nIt also checks for empty values based on configuration.",
+				Usage:       "Switch env and deliver env files to the specified directory",
+				Description: "Run splits the central env based on configuration and distributes it to each directory.\nIf a stage is specified as an argument, it switches to that stage before delivery.\nIt also checks for empty values based on configuration.",
 				Before:      before,
 				Flags:       []cli.Flag{config},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					cfg := cmd.Metadata["config"].(*lem.Config)
+					stage := cmd.Args().Get(0)
+					if stage != "" {
+						if err := cfg.Switch(stage); err != nil {
+							return err
+						}
+					}
 					if _, err := cfg.Run(); err != nil {
 						return err
 					}
@@ -127,6 +132,12 @@ func newCmd(w, ew io.Writer) *cli.Command {
 				Flags:       []cli.Flag{config},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					cfg := cmd.Metadata["config"].(*lem.Config)
+					stage := cmd.Args().Get(0)
+					if stage != "" {
+						if err := cfg.Switch(stage); err != nil {
+							return err
+						}
+					}
 					if _, err := cfg.Watch(); err != nil {
 						return err
 					}
