@@ -44,9 +44,9 @@ COMMANDS:
    init      Initialize the configuration file to current directory
    validate  Validate that the configuration file is executable
    stage     Show the current stage context
-   switch    Toggles the current stage to the specified stage
+   switch    Toggle the current stage to the specified stage
    list      Show the env file entries in the current stage
-   run       Deliver env files to the specified directories based on configuration
+   run       Switch env and deliver env files to the specified directory
    watch     Watch changes in the central env and run continuously
 
 GLOBAL OPTIONS:
