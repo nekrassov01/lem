@@ -1,4 +1,4 @@
-package main
+package lem
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_version(t *testing.T) {
+func TestVersion(t *testing.T) {
 	tests := []struct {
 		name     string
 		version  string
@@ -29,7 +29,7 @@ func Test_version(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			revision = tt.revision
-			actual := getVersion()
+			actual := Version()
 			assert.Equal(t, tt.expected, actual)
 		})
 	}

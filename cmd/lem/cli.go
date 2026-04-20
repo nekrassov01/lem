@@ -29,7 +29,7 @@ func newCmd(w, ew io.Writer) *cli.Command {
 	}
 	return &cli.Command{
 		Name:                  "lem",
-		Version:               getVersion(),
+		Version:               lem.Version(),
 		Usage:                 "The local env manager for monorepo",
 		HideHelpCommand:       true,
 		EnableShellCompletion: true,
@@ -41,7 +41,7 @@ func newCmd(w, ew io.Writer) *cli.Command {
 				Name:        "init",
 				Usage:       "Initialize the configuration file to current directory",
 				Description: "Init generates a sample lem.toml in the current directory.\nYou can customize this file for your use.",
-				Action: func(ctx context.Context, cmd *cli.Command) error {
+				Action: func(_ context.Context, _ *cli.Command) error {
 					return lem.Init()
 				},
 			},
@@ -51,7 +51,7 @@ func newCmd(w, ew io.Writer) *cli.Command {
 				Description: "Validate validates whether the configuration file in the current directory is executable.\nIn addition to syntax checks, it also checks whether the path exists.",
 				Before:      before,
 				Flags:       []cli.Flag{config},
-				Action: func(ctx context.Context, cmd *cli.Command) error {
+				Action: func(_ context.Context, cmd *cli.Command) error {
 					cfg := cmd.Metadata["config"].(*lem.Config)
 					return cfg.Validate()
 				},
@@ -62,7 +62,7 @@ func newCmd(w, ew io.Writer) *cli.Command {
 				Description: "Stage displays the current stage context based on the configuration.",
 				Before:      before,
 				Flags:       []cli.Flag{config},
-				Action: func(ctx context.Context, cmd *cli.Command) error {
+				Action: func(_ context.Context, cmd *cli.Command) error {
 					cfg := cmd.Metadata["config"].(*lem.Config)
 					return cfg.Current()
 				},
@@ -73,7 +73,7 @@ func newCmd(w, ew io.Writer) *cli.Command {
 				Description: "Switch changes the current stage to the specified stage based on the state file.\nIf there is no state file, it will be created.",
 				Before:      before,
 				Flags:       []cli.Flag{config},
-				Action: func(ctx context.Context, cmd *cli.Command) error {
+				Action: func(_ context.Context, cmd *cli.Command) error {
 					cfg := cmd.Metadata["config"].(*lem.Config)
 					if err := cfg.Switch(cmd.Args().Get(0)); err != nil {
 						return err
@@ -87,7 +87,7 @@ func newCmd(w, ew io.Writer) *cli.Command {
 				Description: "List resolves and displays a list of env file entries for the current stage based on the configuration.",
 				Before:      before,
 				Flags:       []cli.Flag{config},
-				Action: func(ctx context.Context, cmd *cli.Command) error {
+				Action: func(_ context.Context, cmd *cli.Command) error {
 					cfg := cmd.Metadata["config"].(*lem.Config)
 					entries, err := cfg.List()
 					if err != nil {
@@ -110,7 +110,7 @@ func newCmd(w, ew io.Writer) *cli.Command {
 				Description: "Run splits the central env based on configuration and distributes it to each directory.\nIf a stage is specified as an argument, it switches to that stage before delivery.\nIt also checks for empty values based on configuration.",
 				Before:      before,
 				Flags:       []cli.Flag{config},
-				Action: func(ctx context.Context, cmd *cli.Command) error {
+				Action: func(_ context.Context, cmd *cli.Command) error {
 					cfg := cmd.Metadata["config"].(*lem.Config)
 					stage := cmd.Args().Get(0)
 					if stage != "" {
@@ -130,7 +130,7 @@ func newCmd(w, ew io.Writer) *cli.Command {
 				Description: "Watch continuously monitors changes in the central env and synchronizes changes to each directory.",
 				Before:      before,
 				Flags:       []cli.Flag{config},
-				Action: func(ctx context.Context, cmd *cli.Command) error {
+				Action: func(_ context.Context, cmd *cli.Command) error {
 					cfg := cmd.Metadata["config"].(*lem.Config)
 					stage := cmd.Args().Get(0)
 					if stage != "" {
