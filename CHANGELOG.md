@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.0.10](https://github.com/nekrassov01/lem/compare/v0.0.9...v0.0.10) - 2026-04-20
+## [v0.1.0](https://github.com/nekrassov01/lem/compare/v0.0.9...v0.1.0) - 2026-04-20
 - Update for common settings for gh-infra by @nekrassov01 in https://github.com/nekrassov01/lem/pull/1
 
 ## [v0.0.9](https://github.com/nekrassov01/lem/compare/v0.0.8...v0.0.9) - 2025-10-26
