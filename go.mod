@@ -5,7 +5,7 @@ go 1.26.2
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/fatih/color v1.19.0
-	github.com/fsnotify/fsnotify v1.9.0
+	github.com/fsnotify/fsnotify v1.10.0
 	github.com/nekrassov01/mintab v0.1.4
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v3 v3.8.0
